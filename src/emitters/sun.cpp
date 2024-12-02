@@ -36,11 +36,12 @@ NAMESPACE_BEGIN(mitsuba)
    0.526 and 0.545 depending on the time of year */
 #define SUN_APP_RADIUS 0.5358
 
-#if SPECTRUM_SAMPLES == 3
-# define SUN_PIXELFORMAT Bitmap::ERGB
-#else
-# define SUN_PIXELFORMAT Bitmap::ESpectrum
-#endif
+// Revise the following as we only focussing on RGB color space
+// #if SPECTRUM_SAMPLES == 3
+# define SUN_PIXELFORMAT Bitmap::PixelFormat::RGB // in include/mitsuba/core/bitmap.h, we have RGB instead of ERGB; We have no ESpectrum
+// #else
+// # define SUN_PIXELFORMAT Bitmap::ESpectrum
+// #endif
 
 /*!\plugin{sun}{Sun emitter}
  * \icon{emitter_sun}
@@ -202,18 +203,18 @@ public:
         size_t nSamples = (size_t) std::max((Float) 100,
             (pixelCount * coveredPortion * 1000));
 
-        ref<Bitmap> bitmap = new Bitmap(SUN_PIXELFORMAT, Bitmap::EFloat,
+        ref<Bitmap> bitmap = new Bitmap(SUN_PIXELFORMAT, m_component_format,
             Vector2i(m_resolution, m_resolution/2));
         bitmap->clear();
-        Frame frame(m_sunDir);
+        Frame3f frame(m_sunDir);
 
-        Point2 factor(bitmap->getWidth() / (2*M_PI),
-            bitmap->getHeight() / M_PI);
+        Point2f factor(bitmap->width() / (2*M_PI), // getWidth/Height is mitsuba1 is replaced by Width/Height in mitsuba3 (in include/mitsuba/core/bitmap.h)
+            bitmap->height() / M_PI);
 
-        Spectrum *target = (Spectrum *) bitmap->getFloatData();
+        Spectrum *target = (Spectrum *) bitmap->data(); // data() is used in mitsuba3 instead of getFloatData() in mitsuba1
         Spectrum value =
             m_radiance * (2 * M_PI * (1-std::cos(m_theta))) *
-            static_cast<Float>(bitmap->getWidth() * bitmap->getHeight())
+            static_cast<Float>(bitmap->width() * bitmap->height())
             / (2 * M_PI * M_PI * nSamples);
 
         for (size_t i=0; i<nSamples; ++i) {
@@ -237,10 +238,8 @@ public:
         bitmapData.size = sizeof(Bitmap);
         props.setData("bitmap", bitmapData);
         props.setAnimatedTransform("toWorld", m_worldTransform);
-        props.setFloat("samplingWeight", m_samplingWeight);
-        Emitter *emitter = static_cast<Emitter *>(
-            PluginManager::getInstance()->createObject(
-            MTS_CLASS(Emitter), props));
+        props.set_float("samplingWeight", m_samplingWeight);
+        ref<Emitter<Float, Spectrum>> emitter = PluginManager::instance()->create_object<Emitter<Float, Spectrum>>(props);
         emitter->configure();
         return emitter;
     }
@@ -252,11 +251,11 @@ public:
 
     std::string toString() const {
         std::ostringstream oss;
-        oss << "SunEmitter[" << endl
-            << "  sunDir = " << m_sunDir.toString() << "," << endl
-            << "  sunRadiusScale = " << m_sunRadiusScale << "," << endl
-            << "  turbidity = " << m_turbidity << "," << endl
-            << "  scale = " << m_scale << endl
+        oss << "SunEmitter[" << std::endl
+            << "  sunDir = " << m_sunDir.toString() << "," << std::endl
+            << "  sunRadiusScale = " << m_sunRadiusScale << "," << std::endl
+            << "  turbidity = " << m_turbidity << "," << std::endl
+            << "  scale = " << m_scale << std::endl
             << "]";
         return oss.str();
     }
