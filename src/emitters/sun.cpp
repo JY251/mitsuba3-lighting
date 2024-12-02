@@ -112,7 +112,9 @@ template <typename Float, typename Spectrum>
 class SunEmitter final : public Emitter<Float, Spectrum> {
 public:
     // Without this, error on line 116: 'Base' was not declared in this scope
-    MI_IMPORT_BASE(Emitter, m_worldTransform, m_samplingWeight)
+    // I have recognized that "m_to_world" is used in mitsuba3 instead of "m_worldtransform" in mitsuba
+    // I have also recognized that "sample_wavelengths" is used in mitsuba3 instead of "m_samplingWeight" in mitsuba
+    MI_IMPORT_BASE(Emitter, m_to_world, sample_wavelengths) 
     MI_IMPORT_TYPES(Scene, Texture)
 
     SunEmitter(const Properties &props)
@@ -167,9 +169,9 @@ public:
 
         if (m_sunRadiusScale == 0) {
             Properties props("directional");
-            const Transform3f &trafo = m_worldTransform->eval(0); // NOTE: we have transform3f and transform4f, so I am not sure which one to use
+            const Transform3f &trafo = m_to_world.value(); // NOTE: we have transform3f and transform4f, so I am not sure which one to use
             props.set_array3f("direction", -trafo(m_sunDir)); // setVector is not available in mitsuba3; As trafo seems to be 3D, set_array3f is used
-            props.set_float("samplingWeight", m_samplingWeight);
+            props.set_float("samplingWeight", sample_wavelengths);
 
             props.set_array3f("irradiance", m_radiance * m_solidAngle); // as we only use RGB as the spectrum, setSpectrum is defined as set_array3f in mitsuba3
 
@@ -237,8 +239,8 @@ public:
         bitmapData.ptr = (uint8_t *) bitmap.get();
         bitmapData.size = sizeof(Bitmap);
         props.setData("bitmap", bitmapData);
-        props.setAnimatedTransform("toWorld", m_worldTransform);
-        props.set_float("samplingWeight", m_samplingWeight);
+        props.setAnimatedTransform("toWorld", m_to_world);
+        props.set_float("samplingWeight", sample_wavelengths);
         ref<Emitter<Float, Spectrum>> emitter = PluginManager::instance()->create_object<Emitter<Float, Spectrum>>(props);
         emitter->configure();
         return emitter;

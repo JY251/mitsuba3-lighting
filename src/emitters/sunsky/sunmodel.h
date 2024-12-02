@@ -2,7 +2,7 @@
 #define __SUN_H
 
 #include <mitsuba/mitsuba.h>
-#include <mitsuba/core/properties.h> // Point2f
+#include <mitsuba/core/fwd.h> // Point2f, AnimatedTransform
 
 #define EARTH_MEAN_RADIUS 6371.01   // In km
 #define ASTRONOMICAL_UNIT 149597890 // In km
@@ -50,6 +50,16 @@ struct SphericalCoordinates {
         return oss.str();
     }
 };
+
+template <typename Float>
+optix::Vector3f toSphere(const SphericalCoordinates<Float> coords) {
+    Float sinTheta, cosTheta, sinPhi, cosPhi;
+
+    dr::sincos(coords.elevation, &sinTheta, &cosTheta);
+    dr::sincos(coords.azimuth, &sinPhi, &cosPhi);
+
+    return optix::Vector3f(sinPhi*sinTheta, cosTheta, -cosPhi*sinTheta);
+}
 
 template <typename Float>
 struct DateTimeRecord {
@@ -235,6 +245,43 @@ inline Point2f sample02(size_t n) {
     #endif
 }
 
+
+template <typename Float>
+SphericalCoordinates<Float> computeSunCoordinates(const Properties &props) {
+    /* configure position of sun */
+    if (props.has_property("sunDirection")) {
+        if (props.has_property("latitude") || props.has_property("longitude")
+            || props.has_property("timezone") || props.has_property("day")
+            || props.has_property("time"))
+            SLog(EError, "Both the 'sunDirection' parameter and time/location "
+                    "information were provided -- only one of them can be specified at a time!");
+
+        return computeSunCoordinates(
+            props.get<optix::Vector3f>("sunDirection"),
+            props.get<AnimatedTransform>("toWorld", Transform())->eval(0).inverse());
+    } else {
+        LocationRecord<Float> location;
+        DateTimeRecord<Float> dateTime;
+
+        location.latitude  = props.get<Float>("latitude", 35.6894f);
+        location.longitude = props.get<Float>("longitude", 139.6917f);
+        location.timezone  = props.get<Float>("timezone", 9);
+        dateTime.year      = props.get<int>("year", 2010);
+        dateTime.day       = props.get<int(>"day", 10);
+        dateTime.month     = props.get<int>("month", 7);
+        dateTime.hour      = props.get<Float>("hour", 15.0f);
+        dateTime.minute    = props.get<Float>("minute", 0.0f);
+        dateTime.second    = props.get<Float>("second", 0.0f);
+
+        SphericalCoordinates coords = computeSunCoordinates(dateTime, location);
+
+        SLog(EDebug, "Computed sun position for %s and %s: %s",
+            location.toString().c_str(), dateTime.toString().c_str(),
+            coords.toString().c_str());
+
+        return coords;
+    }
+}
 
 NAMESPACE_END(mitsuba)
 
