@@ -110,11 +110,14 @@ NAMESPACE_BEGIN(mitsuba)
 template <typename Float, typename Spectrum>
 class SunEmitter final : public Emitter<Float, Spectrum> {
 public:
+    MI_IMPORT_BASE(Emitter) // Without this, error on line 116: 'Base' was not declared in this scope
+    MI_IMPORT_TYPES(Scene, Texture)
+
     SunEmitter(const Properties &props)
             : Base(props) {
         m_scale = props.get<Float>("scale", 1.0f);
         m_resolution = props.get<int>("resolution", 512);
-        m_sun = computeSunCoordinates(props);
+        m_sun = computeSunCoordinates<Float>(props);
         m_sunRadiusScale = props.get<Float>("sunRadiusScale", 1.0f);
         m_turbidity = props.get<Float>("turbidity", 3.0f);
         m_stretch = props.get<Float>("stretch", 1.0f);
