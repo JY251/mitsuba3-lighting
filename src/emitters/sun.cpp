@@ -110,7 +110,8 @@ NAMESPACE_BEGIN(mitsuba)
 template <typename Float, typename Spectrum>
 class SunEmitter final : public Emitter<Float, Spectrum> {
 public:
-    MI_IMPORT_BASE(Emitter) // Without this, error on line 116: 'Base' was not declared in this scope
+    // Without this, error on line 116: 'Base' was not declared in this scope
+    MI_IMPORT_BASE(Emitter, m_worldTransform, m_samplingWeight)
     MI_IMPORT_TYPES(Scene, Texture)
 
     SunEmitter(const Properties &props)
@@ -159,21 +160,22 @@ public:
         return true;
     }
 
-    Emitter<Float, Spectrum> *getElement(size_t i) {
+    ref<Emitter<Float, Spectrum>> getElement(size_t i) {
         if (i != 0)
             return NULL;
 
         if (m_sunRadiusScale == 0) {
             Properties props("directional");
-            const Transform &trafo = m_worldTransform->eval(0);
-            props.setVector("direction", -trafo(m_sunDir));
-            props.setFloat("samplingWeight", m_samplingWeight);
+            const Transform3f &trafo = m_worldTransform->eval(0); // NOTE: we have transform3f and transform4f, so I am not sure which one to use
+            props.set_array3f("direction", -trafo(m_sunDir)); // setVector is not available in mitsuba3; As trafo seems to be 3D, set_array3f is used
+            props.set_float("samplingWeight", m_samplingWeight);
 
-            props.setSpectrum("irradiance", m_radiance * m_solidAngle);
+            props.set_array3f("irradiance", m_radiance * m_solidAngle); // as we only use RGB as the spectrum, setSpectrum is defined as set_array3f in mitsuba3
 
-            Emitter *emitter = static_cast<Emitter *>(
-                PluginManager::getInstance()->createObject(
-                MTS_CLASS(Emitter), props));
+            // Emitter<Float, Spectrum> *emitter = static_cast<Emitter *>(
+            //     PluginManager::instance()->create_object<Emitter>(props));
+
+            ref<Emitter<Float, Spectrum>> emitter = PluginManager::instance()->create_object<Emitter<Float, Spectrum>>(props); // ref to line 116 of ior.h
 
             emitter->configure();
             return emitter;
