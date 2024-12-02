@@ -208,7 +208,7 @@ public:
         bitmap->clear();
         Frame3f frame(m_sunDir);
 
-        Point2f factor(bitmap->width() / (2*M_PI), // getWidth/Height is mitsuba1 is replaced by Width/Height in mitsuba3 (in include/mitsuba/core/bitmap.h)
+        Point2f factor(bitmap->width() / (2*M_PI), // getWidth/Height is mitsuba1 is replaced by width/height in mitsuba3 (in include/mitsuba/core/bitmap.h)
             bitmap->height() / M_PI);
 
         Spectrum *target = (Spectrum *) bitmap->data(); // data() is used in mitsuba3 instead of getFloatData() in mitsuba1
@@ -219,16 +219,16 @@ public:
 
         for (size_t i=0; i<nSamples; ++i) {
             Vector dir = frame.toWorld(
-                warp::squareToUniformCone(cosTheta, sample02(i)));
+                warp::square_to_uniform_cone(cosTheta, sample02(i)));
 
-            Float sinTheta = math::safe_sqrt(1-dir.y*dir.y);
+            Float sinTheta = drjit::safe_sqrt(1-dir.y*dir.y);
             SphericalCoordinates sphCoords = fromSphere(dir);
 
             Point2i pos(
-                std::min(std::max(0, (int) (sphCoords.azimuth * factor.x)), bitmap->getWidth()-1),
-                std::min(std::max(0, (int) (sphCoords.elevation * factor.y)), bitmap->getHeight()-1));
+                std::min(std::max(0, (int) (sphCoords.azimuth * factor.x)), bitmap->width()-1),
+                std::min(std::max(0, (int) (sphCoords.elevation * factor.y)), bitmap->height()-1));
 
-            target[pos.x + pos.y * bitmap->getWidth()] += value / std::max((Float) 1e-3f, sinTheta);
+            target[pos.x + pos.y * bitmap->width()] += value / std::max((Float) 1e-3f, sinTheta);
         }
 
         /* Instantiate a nested envmap plugin */
@@ -249,16 +249,16 @@ public:
     //     NotImplementedError("getAABB");
     // }
 
-    std::string toString() const {
-        std::ostringstream oss;
-        oss << "SunEmitter[" << std::endl
-            << "  sunDir = " << m_sunDir.toString() << "," << std::endl
-            << "  sunRadiusScale = " << m_sunRadiusScale << "," << std::endl
-            << "  turbidity = " << m_turbidity << "," << std::endl
-            << "  scale = " << m_scale << std::endl
-            << "]";
-        return oss.str();
-    }
+    // std::string toString() const {
+    //     std::ostringstream oss;
+    //     oss << "SunEmitter[" << std::endl
+    //         << "  sunDir = " << m_sunDir.toString() << "," << std::endl
+    //         << "  sunRadiusScale = " << m_sunRadiusScale << "," << std::endl
+    //         << "  turbidity = " << m_turbidity << "," << std::endl
+    //         << "  scale = " << m_scale << std::endl
+    //         << "]";
+    //     return oss.str();
+    // }
 
     MI_DECLARE_CLASS()
 protected:

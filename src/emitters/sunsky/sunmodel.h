@@ -2,7 +2,7 @@
 #define __SUN_H
 
 #include <mitsuba/mitsuba.h>
-#include <mitsuba/core/util.h> // For radToDeg
+#include <mitsuba/core/properties.h> // Point2f
 
 #define EARTH_MEAN_RADIUS 6371.01   // In km
 #define ASTRONOMICAL_UNIT 149597890 // In km
@@ -177,6 +177,62 @@ SphericalCoordinates<Float> computeSunCoordinates(const DateTimeRecord<Float> &d
     }
 
     return SphericalCoordinates((Float) elevation, (Float) azimuth);
+}
+
+/// Van der Corput radical inverse in base 2 with single precision
+inline float radicalInverse2Single(uint32_t n, uint32_t scramble = 0U) {
+    /* Efficiently reverse the bits in 'n' using binary operations */
+#if (defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 2))) || defined(__clang__)
+    n = __builtin_bswap32(n);
+#else
+    n = (n << 16) | (n >> 16);
+    n = ((n & 0x00ff00ff) << 8) | ((n & 0xff00ff00) >> 8);
+#endif
+    n = ((n & 0x0f0f0f0f) << 4) | ((n & 0xf0f0f0f0) >> 4);
+    n = ((n & 0x33333333) << 2) | ((n & 0xcccccccc) >> 2);
+    n = ((n & 0x55555555) << 1) | ((n & 0xaaaaaaaa) >> 1);
+
+    // Account for the available precision and scramble
+    n = (n >> (32 - 24)) ^ (scramble & ~-(1 << 24));
+
+    return (float) n / (float) (1U << 24);
+}
+
+/// Van der Corput radical inverse in base 2 with double precision
+inline double radicalInverse2Double(uint64_t n, uint64_t scramble = 0ULL) {
+    /* Efficiently reverse the bits in 'n' using binary operations */
+#if (defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 2))) || defined(__clang__)
+    n = __builtin_bswap64(n);
+#else
+    n = (n << 32) | (n >> 32);
+    n = ((n & 0x0000ffff0000ffffULL) << 16) | ((n & 0xffff0000ffff0000ULL) >> 16);
+    n = ((n & 0x00ff00ff00ff00ffULL) << 8)  | ((n & 0xff00ff00ff00ff00ULL) >> 8);
+#endif
+    n = ((n & 0x0f0f0f0f0f0f0f0fULL) << 4)  | ((n & 0xf0f0f0f0f0f0f0f0ULL) >> 4);
+    n = ((n & 0x3333333333333333ULL) << 2)  | ((n & 0xccccccccccccccccULL) >> 2);
+    n = ((n & 0x5555555555555555ULL) << 1)  | ((n & 0xaaaaaaaaaaaaaaaaULL) >> 1);
+
+    // Account for the available precision and scramble
+    n = (n >> (64 - 53)) ^ (scramble & ~-(1LL << 53));
+
+    return (double) n / (double) (1ULL << 53);
+}
+
+// sample02 and sample02Double are included in qmc.h in mitsuba1, but not in mitsuba3. Therefore, I include them here.
+/// Generate an element from a (0, 2) sequence (without scrambling)
+inline Point2f sample02(size_t n) {
+
+    #if defined(SINGLE_PRECISION)
+        return Point2f(
+            radicalInverse2Single((uint32_t) n),
+            sobol_2((uint32_t) n)
+        );
+    #else
+        return Point2f(
+            radicalInverse2Double((uint64_t) n),
+            sobol_2((uint64_t) n)
+        );
+    #endif
 }
 
 
