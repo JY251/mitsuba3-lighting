@@ -1,6 +1,9 @@
 #include <mitsuba/mitsuba.h> // std::string
 #include <math.h> // M_PI
 #include <mitsuba/render/fwd.h> // MI_EXPORT, MI_IMPORT
+#include <mitsuba/render/emitter.h> // Emitter
+#include <mitsuba/core/properties.h> // props.get...
+
 // #include <mitsuba/core/platform.h> // MI_EXPORT, MI_IMPORT
 // #include <string.h> // This lines does not appear in mitsuba3 except for ext files 
 
@@ -408,8 +411,12 @@ Float degToRad(Float value) { return value * (M_PI / 180.0f); }
 template <typename Float, typename Spectrum>
 class SunEmitter final : public Emitter<Float, Spectrum> {
 public:
-		// MI_IMPORT_BASE();
+		MI_IMPORT_BASE(Emitter,)
 		// MI_IMPORT_TYPES();
+        
+        // using Base = Emitter<Float, Spectrum>
+        // MI_IMPORT_BASE > MI_USING_MEMBERS > 
+
         MI_IMPORT_CORE_TYPES() // Frame3f
 
 
@@ -429,10 +436,10 @@ public:
 				sun.elevation *= m_stretch;
 				m_sunDir = toSphere<Float>(sun);
 
-        /* Solid angle covered by the sun */
-        m_theta = degToRad<Float>(SUN_APP_RADIUS * 0.5f);
-        m_solidAngle = 2 * M_PI * (1 - dr::cos(m_theta));
-        m_radiance = computeSunRadiance(m_sun.elevation, m_turbidity) * m_scale;
+                /* Solid angle covered by the sun */
+                m_theta = degToRad<Float>(SUN_APP_RADIUS * 0.5f);
+                m_solidAngle = 2 * M_PI * (1 - dr::cos(m_theta));
+                m_radiance = computeSunRadiance(m_sun.elevation, m_turbidity) * m_scale;
 		}
 
 
@@ -502,4 +509,29 @@ public:
             return discretized;
         }
 
+protected:
+        MI_DECLARE_CLASS()
+protected:
+    /// Environment map resolution
+    int m_resolution;
+    /// Constant scale factor applied to the model
+    Float m_scale;
+    /// Scale factor that can be applied to the sun radius
+    Float m_sunRadiusScale;
+    /// Angle cutoff for the sun disk (w/o scaling)
+    Float m_theta;
+    /// Solid angle covered by the sun (w/o scaling)
+    Float m_solidAngle;
+    /// Position of the sun in spherical coordinates
+    SphericalCoordinates m_sun;
+    /// Direction of the sun (untransformed)
+    Vector m_sunDir;
+    /// Turbidity of the atmosphere
+    Float m_turbidity;
+    /// Stretch factor to extend to the bottom hemisphere
+    Float m_stretch;
 };
+
+MI_IMPLEMENT_CLASS_VARIANT(SunEmitter, Emitter)
+MI_EXPORT_PLUGIN(SunEmitter, "Sun emitter");
+NAMESPACE_END(mitsuba)
