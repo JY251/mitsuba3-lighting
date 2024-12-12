@@ -1,7 +1,6 @@
 #include <mitsuba/mitsuba.h> // std::string
 #include <math.h> // M_PI
 #include <mitsuba/render/fwd.h> // MI_EXPORT, MI_IMPORT
-#include <mitsuba/core/fwd.h> // Spectrum
 // #include <mitsuba/core/platform.h> // MI_EXPORT, MI_IMPORT
 // #include <string.h> // This lines does not appear in mitsuba3 except for ext files 
 
@@ -294,7 +293,6 @@ public:
     virtual ~InterpolatedSpectrum() { }
 protected:
     std::vector<Float> m_wavelengths, m_values;
-
 };
 
 /////////////////////////////////////// Value ///////////////////////////////////////
@@ -391,84 +389,17 @@ void fromContinuousSpectrum(Spectrum &spectrum, const ContinuousSpectrum<Float> 
 
     for (int i=0; i<SPECTRUM_SAMPLES; i++)
         // s[i] is used to store the spectral values corresponding to different wavelength intervals for spectral rendering
-        s[i] = smooth.average(m_wavelengths[i], m_wavelengths[i+1]);
+        // m_wavelength belong to "ContinuousSpectrum" (protected)
+        s[i] = smooth.average(spectrum.m_wavelengths[i], spectrum.m_wavelengths[i+1]);
 #endif
 }
 
-template <typename Float>
-Frame3f toSphere(const SphericalCoordinates<Float> coords) {
-		// converts spherical coordinates to cartesian coordinates
-    Float sinTheta, cosTheta, sinPhi, cosPhi;
-
-    dr::sincos(coords.elevation, &sinTheta, &cosTheta);
-    dr::sincos(coords.azimuth, &sinPhi, &cosPhi);
-
-    return Frame3f(sinPhi*sinTheta, cosTheta, -cosPhi*sinTheta);
-}
 
 template <typename Float>
 Float radToDeg(Float value) { return value * (180.0f / M_PI); }
 
 template <typename Float>
 Float degToRad(Float value) { return value * (M_PI / 180.0f); }
-
-template <typename Float>
-Spectrum computeSunRadiance(Float theta, Float turbidity) {
-    InterpolatedSpectrum k_oCurve(k_oWavelengths, k_oAmplitudes, 64);
-    InterpolatedSpectrum k_gCurve(k_gWavelengths, k_gAmplitudes, 4);
-    InterpolatedSpectrum k_waCurve(k_waWavelengths, k_waAmplitudes, 13);
-    InterpolatedSpectrum solCurve(solWavelengths, solAmplitudes, 38);
-		Float data[91], wavelengths[91];  // (800 - 350) / 5  + 1
-    Float beta = 0.04608365822050f * turbidity - 0.04586025928522f;
-
-    // Relative Optical Mass
-    Float m = 1.0f / (std::cos(theta) + 0.15f *
-        dr::pow(93.885f - theta/M_PI*180.0f, (Float) -1.253f));
-
-    Float lambda;
-    int i = 0;
-    for (i = 0, lambda = 350; i < 91; i++, lambda += 5) {
-        // Rayleigh Scattering
-        // Results agree with the graph (pg 115, MI) */
-        Float tauR = dr::exp(-m * 0.008735f * dr::pow(lambda/1000.0f, (Float) -4.08));
-
-        // Aerosol (water + dust) attenuation
-        // beta - amount of aerosols present
-        // alpha - ratio of small to large particle sizes. (0:4,usually 1.3)
-        // Results agree with the graph (pg 121, MI)
-        const Float alpha = 1.3f;
-        Float tauA = dr::exp(-m * beta * dr::pow(lambda/1000.0f, -alpha));  // lambda should be in um
-
-        // Attenuation due to ozone absorption
-        // lOzone - amount of ozone in cm(NTP)
-        // Results agree with the graph (pg 128, MI)
-        const Float lOzone = .35f;
-        Float tauO = dr::exp(-m * k_oCurve.eval(lambda) * lOzone);
-
-        // Attenuation due to mixed gases absorption
-        // Results agree with the graph (pg 131, MI)
-        Float tauG = dr::exp(-1.41f * k_gCurve.eval(lambda) * m / dr::pow(1 + 118.93f
-            * k_gCurve.eval(lambda) * m, (Float) 0.45f));
-
-        // Attenuation due to water vapor absorbtion
-        // w - precipitable water vapor in centimeters (standard = 2)
-        // Results agree with the graph (pg 132, MI)
-        const Float w = 2.0;
-        Float tauWA = dr::exp(-0.2385f * k_waCurve.eval(lambda) * w * m /
-                dr::pow(1 + 20.07f * k_waCurve.eval(lambda) * w * m, (Float) 0.45f));
-
-        data[i] = solCurve.eval(lambda) * tauR * tauA * tauO * tauG * tauWA;
-        wavelengths[i] = lambda;
-    }
-
-    InterpolatedSpectrum interpolated(wavelengths, data, 91);
-    Spectrum discretized;
-    discretized.fromContinuousSpectrum(interpolated);
-    discretized.clampNegative();
-
-    return discretized;
-}
-
 		
 
 
@@ -477,8 +408,10 @@ Spectrum computeSunRadiance(Float theta, Float turbidity) {
 template <typename Float, typename Spectrum>
 class SunEmitter final : public Emitter<Float, Spectrum> {
 public:
-		MI_IMPORT_BASE();
-		MI_IMPORT_TYPES();
+		// MI_IMPORT_BASE();
+		// MI_IMPORT_TYPES();
+        MI_IMPORT_CORE_TYPES() // Frame3f
+
 
 		SunEmitter(const Properties &props): Base(props) {
 				m_scale = props.get<Float>("scale", 1.0f);
@@ -501,5 +434,72 @@ public:
         m_solidAngle = 2 * M_PI * (1 - dr::cos(m_theta));
         m_radiance = computeSunRadiance(m_sun.elevation, m_turbidity) * m_scale;
 		}
+
+
+        Frame3f toSphere(const SphericalCoordinates<Float> coords) {
+                // converts spherical coordinates to cartesian coordinates
+            Float sinTheta, cosTheta, sinPhi, cosPhi;
+
+            dr::sincos(coords.elevation, &sinTheta, &cosTheta);
+            dr::sincos(coords.azimuth, &sinPhi, &cosPhi);
+
+            return Frame3f(sinPhi*sinTheta, cosTheta, -cosPhi*sinTheta);
+        }
+
+        Spectrum computeSunRadiance(Float theta, Float turbidity) {
+            InterpolatedSpectrum k_oCurve(k_oWavelengths, k_oAmplitudes, 64);
+            InterpolatedSpectrum k_gCurve(k_gWavelengths, k_gAmplitudes, 4);
+            InterpolatedSpectrum k_waCurve(k_waWavelengths, k_waAmplitudes, 13);
+            InterpolatedSpectrum solCurve(solWavelengths, solAmplitudes, 38);
+                Float data[91], wavelengths[91];  // (800 - 350) / 5  + 1
+            Float beta = 0.04608365822050f * turbidity - 0.04586025928522f;
+
+            // Relative Optical Mass
+            Float m = 1.0f / (std::cos(theta) + 0.15f *
+                dr::pow(93.885f - theta/M_PI*180.0f, (Float) -1.253f));
+
+            Float lambda;
+            int i = 0;
+            for (i = 0, lambda = 350; i < 91; i++, lambda += 5) {
+                // Rayleigh Scattering
+                // Results agree with the graph (pg 115, MI) */
+                Float tauR = dr::exp(-m * 0.008735f * dr::pow(lambda/1000.0f, (Float) -4.08));
+
+                // Aerosol (water + dust) attenuation
+                // beta - amount of aerosols present
+                // alpha - ratio of small to large particle sizes. (0:4,usually 1.3)
+                // Results agree with the graph (pg 121, MI)
+                const Float alpha = 1.3f;
+                Float tauA = dr::exp(-m * beta * dr::pow(lambda/1000.0f, -alpha));  // lambda should be in um
+
+                // Attenuation due to ozone absorption
+                // lOzone - amount of ozone in cm(NTP)
+                // Results agree with the graph (pg 128, MI)
+                const Float lOzone = .35f;
+                Float tauO = dr::exp(-m * k_oCurve.eval(lambda) * lOzone);
+
+                // Attenuation due to mixed gases absorption
+                // Results agree with the graph (pg 131, MI)
+                Float tauG = dr::exp(-1.41f * k_gCurve.eval(lambda) * m / dr::pow(1 + 118.93f
+                    * k_gCurve.eval(lambda) * m, (Float) 0.45f));
+
+                // Attenuation due to water vapor absorbtion
+                // w - precipitable water vapor in centimeters (standard = 2)
+                // Results agree with the graph (pg 132, MI)
+                const Float w = 2.0;
+                Float tauWA = dr::exp(-0.2385f * k_waCurve.eval(lambda) * w * m /
+                        dr::pow(1 + 20.07f * k_waCurve.eval(lambda) * w * m, (Float) 0.45f));
+
+                data[i] = solCurve.eval(lambda) * tauR * tauA * tauO * tauG * tauWA;
+                wavelengths[i] = lambda;
+            }
+
+            InterpolatedSpectrum interpolated(wavelengths, data, 91);
+            Spectrum discretized;
+            discretized.fromContinuousSpectrum(interpolated);
+            discretized.clampNegative();
+
+            return discretized;
+        }
 
 };
