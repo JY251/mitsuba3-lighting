@@ -523,9 +523,9 @@ protected:
     /// Solid angle covered by the sun (w/o scaling)
     Float m_solidAngle;
     /// Position of the sun in spherical coordinates
-    SphericalCoordinates m_sun;
+    SphericalCoordinates<Float> m_sun;
     /// Direction of the sun (untransformed)
-    Vector m_sunDir;
+    Frame3f m_sunDir;
     /// Turbidity of the atmosphere
     Float m_turbidity;
     /// Stretch factor to extend to the bottom hemisphere
