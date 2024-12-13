@@ -551,8 +551,9 @@ public:
             Float elevation = dr::acos(d.y());
             // As we handle in paralle, just to do azimuth < 0 is not OK.
             // Q. Not sure if dr::all is correct or not? dr::any?
-            if (dr::all(azimuth < 0))
-                azimuth += 2*M_PI;
+            azimuth = dr::select(azimuth < 0.0, azimuth+2*M_PI, azimuth);
+            // if (dr::all(azimuth < 0))
+            //     azimuth += 2*M_PI;
             return SphericalCoordinates(elevation, azimuth);
         }
 
@@ -689,8 +690,10 @@ public:
 
                 azimuth = dr::atan2(dY, dX);
                 // Q. if all or any?
-                if (dr::all(azimuth < 0.0))
-                    azimuth += 2*M_PI;
+                // azimuth[azimuth < 0.0] += 2 * M_PI
+                azimuth = dr::select(azimuth < 0.0, azimuth+2*M_PI, azimuth);
+                // if (azimuth < 0.0)
+                //     azimuth += 2*M_PI;
 
                 // Parallax Correction
                 elevation += (EARTH_MEAN_RADIUS / ASTRONOMICAL_UNIT) * dr::sin(elevation);
