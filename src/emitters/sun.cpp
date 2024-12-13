@@ -3,6 +3,7 @@
 #include <mitsuba/render/fwd.h> // MI_EXPORT, MI_IMPORT
 #include <mitsuba/render/emitter.h> // Emitter
 #include <mitsuba/core/properties.h> // props.get...
+#include <mitsuba/core/field.h> // field
 
 // #include <mitsuba/core/platform.h> // MI_EXPORT, MI_IMPORT
 // #include <string.h> // This lines does not appear in mitsuba3 except for ext files 
@@ -533,10 +534,15 @@ public:
         Frame3f toSphere(const SphericalCoordinates<Float> coords) {
                 // converts spherical coordinates to cartesian coordinates
             Float sinTheta, cosTheta, sinPhi, cosPhi;
+            
+            // 変数の数が多い
+            // In the following notation, you need to add "auto"; however add "auto" means you redeclare the sinTheta etc. agian. Therefore, you need to use std::tie
+            // [sinTheta, cosTheta] = dr::sincos(coords.elevation);
+            // [sinPhi, cosPhi] = dr::sincos(coords.azimuth);
 
-            dr::sincos(coords.elevation, &sinTheta, &cosTheta);
-            dr::sincos(coords.azimuth, &sinPhi, &cosPhi);
-
+            std::tie(sinTheta, cosTheta) = dr::sincos(coords.elevation);
+            std::tie(sinPhi, cosPhi) = dr::sincos(coords.azimuth);
+            
             return Frame3f(sinPhi*sinTheta, cosTheta, -cosPhi*sinTheta);
         }
 
@@ -588,9 +594,9 @@ public:
                 wavelengths[i] = lambda;
             }
 
-            InterpolatedSpectrum interpolated(wavelengths, data, 91);
+            InterpolatedSpectrum interpolated(wavelengths, data, 91); // this is a continuous
             Spectrum discretized;
-            discretized.fromContinuousSpectrum(interpolated);
+            fromContinuousSpectrum(discretized, interpolated);
             discretized.clampNegative();
 
             return discretized;
@@ -682,8 +688,9 @@ public:
             return SphericalCoordinates((Float) elevation, (Float) azimuth);
         }
 
-        SphericalCoordinates computeSunCoordinates(const Vector& sunDir, const Transform &worldToLuminaire) {
-            return fromSphere(normalize(worldToLuminaire(sunDir)));
+        // The way of "field<Transform4f, ScalarTransform4f>" derived from mitsuba/render/endpoint.h
+        SphericalCoordinates<Float> computeSunCoordinates(const Vector3f& sunDir, const field<Transform4f, ScalarTransform4f> &worldToLuminaire) {
+            return fromSphere(normalize(worldToLuminaire.value().transform_affine(sunDir)));
         }
         
         SphericalCoordinates<Float> computeSunCoordinates(const Properties &props) {
@@ -696,9 +703,12 @@ public:
                     Throw("Both the 'sunDirection' parameter and time/location "
                             "information were provided -- only one of them can be specified at a time!");
 
+                // Q_URGENT. ScalarTransform4f or Transform4f?
                 return computeSunCoordinates(
-                    props.getVector("sunDirection"),
-                    props.getAnimatedTransform("toWorld", Transform())->eval(0).inverse());
+                    props.get<Vector3f>("sunDirection"),
+                    // (ScalarTransform4f) props.get<ScalarTransform4f>("to_world", ScalarTransform4f());
+                    // Original code: props.getAnimatedTransform("toWorld", Transform())->eval(0).inverse());
+                    props.get<field<Transform4f, ScalarTransform4f>>("to_world", ScalarTransform4f().inverse()));
             } else {
             }
         }
@@ -711,7 +721,7 @@ public:
 		SunEmitter(const Properties &props): Base(props) {
 				m_scale = props.get<Float>("scale", 1.0f);
 				m_resolution = props.get<int>("resolution", 512);
-				m_sun = computeSunCoordinates<Float>(props);
+				m_sun = computeSunCoordinates(props);
 				m_sunRadiusScale = props.get<Float>("sunRadiusScale", 1.0f);
 				m_turbidity = props.get<Float>("turbidity", 3.0f);
 				m_stretch = props.get<Float>("stretch", 1.0f);
