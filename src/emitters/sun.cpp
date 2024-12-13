@@ -91,8 +91,6 @@ NAMESPACE_BEGIN(mitsuba)
  */
 
 /////////////////////////////////////// Header ///////////////////////////////////////
-// MI_IMPORT_BASE()
-// MI_IMPORT_TYPES(Frame3f, Spectrum)
 
 template <typename Float>
 struct DateTimeRecord {
@@ -457,7 +455,7 @@ public:
         // using Base = Emitter<Float, Spectrum>
         // MI_IMPORT_BASE > MI_USING_MEMBERS > 
 
-        MI_IMPORT_CORE_TYPES() // Frame3f
+        MI_IMPORT_CORE_TYPES() // Frame3f (not used), Vector3f
 
         ////////////////// Supplementary Constants //////////////////
         /* The following is from the implementation of "A Practical Analytic Model for
@@ -531,7 +529,7 @@ public:
         };
 
         ////////////////// Supplementary Fun //////////////////
-        Frame3f toSphere(const SphericalCoordinates<Float> coords) {
+        Vector3f toSphere(const SphericalCoordinates<Float> coords) {
                 // converts spherical coordinates to cartesian coordinates
             Float sinTheta, cosTheta, sinPhi, cosPhi;
             
@@ -543,64 +541,76 @@ public:
             std::tie(sinTheta, cosTheta) = dr::sincos(coords.elevation);
             std::tie(sinPhi, cosPhi) = dr::sincos(coords.azimuth);
             
-            return Frame3f(sinPhi*sinTheta, cosTheta, -cosPhi*sinTheta);
+            return Vector3f(sinPhi*sinTheta, cosTheta, -cosPhi*sinTheta);
         }
 
-        Spectrum computeSunRadiance(Float theta, Float turbidity) {
-            InterpolatedSpectrum k_oCurve(k_oWavelengths, k_oAmplitudes, 64);
-            InterpolatedSpectrum k_gCurve(k_gWavelengths, k_gAmplitudes, 4);
-            InterpolatedSpectrum k_waCurve(k_waWavelengths, k_waAmplitudes, 13);
-            InterpolatedSpectrum solCurve(solWavelengths, solAmplitudes, 38);
-                Float data[91], wavelengths[91];  // (800 - 350) / 5  + 1
-            Float beta = 0.04608365822050f * turbidity - 0.04586025928522f;
-
-            // Relative Optical Mass
-            Float m = 1.0f / (std::cos(theta) + 0.15f *
-                dr::pow(93.885f - theta/M_PI*180.0f, (Float) -1.253f));
-
-            Float lambda;
-            int i = 0;
-            for (i = 0, lambda = 350; i < 91; i++, lambda += 5) {
-                // Rayleigh Scattering
-                // Results agree with the graph (pg 115, MI) */
-                Float tauR = dr::exp(-m * 0.008735f * dr::pow(lambda/1000.0f, (Float) -4.08));
-
-                // Aerosol (water + dust) attenuation
-                // beta - amount of aerosols present
-                // alpha - ratio of small to large particle sizes. (0:4,usually 1.3)
-                // Results agree with the graph (pg 121, MI)
-                const Float alpha = 1.3f;
-                Float tauA = dr::exp(-m * beta * dr::pow(lambda/1000.0f, -alpha));  // lambda should be in um
-
-                // Attenuation due to ozone absorption
-                // lOzone - amount of ozone in cm(NTP)
-                // Results agree with the graph (pg 128, MI)
-                const Float lOzone = .35f;
-                Float tauO = dr::exp(-m * k_oCurve.eval(lambda) * lOzone);
-
-                // Attenuation due to mixed gases absorption
-                // Results agree with the graph (pg 131, MI)
-                Float tauG = dr::exp(-1.41f * k_gCurve.eval(lambda) * m / dr::pow(1 + 118.93f
-                    * k_gCurve.eval(lambda) * m, (Float) 0.45f));
-
-                // Attenuation due to water vapor absorbtion
-                // w - precipitable water vapor in centimeters (standard = 2)
-                // Results agree with the graph (pg 132, MI)
-                const Float w = 2.0;
-                Float tauWA = dr::exp(-0.2385f * k_waCurve.eval(lambda) * w * m /
-                        dr::pow(1 + 20.07f * k_waCurve.eval(lambda) * w * m, (Float) 0.45f));
-
-                data[i] = solCurve.eval(lambda) * tauR * tauA * tauO * tauG * tauWA;
-                wavelengths[i] = lambda;
-            }
-
-            InterpolatedSpectrum interpolated(wavelengths, data, 91); // this is a continuous
-            Spectrum discretized;
-            fromContinuousSpectrum(discretized, interpolated);
-            discretized.clampNegative();
-
-            return discretized;
+        SphericalCoordinates<Float> fromSphere(const Vector3f d) {
+            // frame -> member is n, s, t (c.f., src/bsdf/normalmap.cpp)
+            // reference: pdf_direction in src/emitters/envmap.cpp
+            Float azimuth = dr::atan2(d.x(), -d.z());
+            Float elevation = dr::acos(d.y());
+            // As we handle in paralle, just to do azimuth < 0 is not OK.
+            // Q. Not sure if dr::all is correct or not? dr::any?
+            if (dr::all(azimuth < 0))
+                azimuth += 2*M_PI;
+            return SphericalCoordinates(elevation, azimuth);
         }
+
+        // Spectrum computeSunRadiance(Float theta, Float turbidity) {
+        //     InterpolatedSpectrum k_oCurve(k_oWavelengths, k_oAmplitudes, 64);
+        //     InterpolatedSpectrum k_gCurve(k_gWavelengths, k_gAmplitudes, 4);
+        //     InterpolatedSpectrum k_waCurve(k_waWavelengths, k_waAmplitudes, 13);
+        //     InterpolatedSpectrum solCurve(solWavelengths, solAmplitudes, 38);
+        //         Float data[91], wavelengths[91];  // (800 - 350) / 5  + 1
+        //     Float beta = 0.04608365822050f * turbidity - 0.04586025928522f;
+
+        //     // Relative Optical Mass
+        //     Float m = 1.0f / (std::cos(theta) + 0.15f *
+        //         dr::pow(93.885f - theta/M_PI*180.0f, (Float) -1.253f));
+
+        //     Float lambda;
+        //     int i = 0;
+        //     for (i = 0, lambda = 350; i < 91; i++, lambda += 5) {
+        //         // Rayleigh Scattering
+        //         // Results agree with the graph (pg 115, MI) */
+        //         Float tauR = dr::exp(-m * 0.008735f * dr::pow(lambda/1000.0f, (Float) -4.08));
+
+        //         // Aerosol (water + dust) attenuation
+        //         // beta - amount of aerosols present
+        //         // alpha - ratio of small to large particle sizes. (0:4,usually 1.3)
+        //         // Results agree with the graph (pg 121, MI)
+        //         const Float alpha = 1.3f;
+        //         Float tauA = dr::exp(-m * beta * dr::pow(lambda/1000.0f, -alpha));  // lambda should be in um
+
+        //         // Attenuation due to ozone absorption
+        //         // lOzone - amount of ozone in cm(NTP)
+        //         // Results agree with the graph (pg 128, MI)
+        //         const Float lOzone = .35f;
+        //         Float tauO = dr::exp(-m * k_oCurve.eval(lambda) * lOzone);
+
+        //         // Attenuation due to mixed gases absorption
+        //         // Results agree with the graph (pg 131, MI)
+        //         Float tauG = dr::exp(-1.41f * k_gCurve.eval(lambda) * m / dr::pow(1 + 118.93f
+        //             * k_gCurve.eval(lambda) * m, (Float) 0.45f));
+
+        //         // Attenuation due to water vapor absorbtion
+        //         // w - precipitable water vapor in centimeters (standard = 2)
+        //         // Results agree with the graph (pg 132, MI)
+        //         const Float w = 2.0;
+        //         Float tauWA = dr::exp(-0.2385f * k_waCurve.eval(lambda) * w * m /
+        //                 dr::pow(1 + 20.07f * k_waCurve.eval(lambda) * w * m, (Float) 0.45f));
+
+        //         data[i] = solCurve.eval(lambda) * tauR * tauA * tauO * tauG * tauWA;
+        //         wavelengths[i] = lambda;
+        //     }
+
+        //     InterpolatedSpectrum interpolated(wavelengths, data, 91); // this is a continuous
+        //     Spectrum discretized;
+        //     fromContinuousSpectrum(discretized, interpolated);
+        //     discretized.clampNegative();
+
+        //     return discretized;
+        // }
         
         /**
         * \brief Compute the elevation and azimuth of the sun as seen by an observer
@@ -612,14 +622,14 @@ public:
         */
         SphericalCoordinates<Float> computeSunCoordinates(const DateTimeRecord<Float> &dateTime, const LocationRecord<Float> &location) {
             // Main variables
-            double elapsedJulianDays, decHours;
-            double eclipticLongitude, eclipticObliquity;
-            double rightAscension, declination;
-            double elevation, azimuth;
+            Float elapsedJulianDays, decHours;
+            Float eclipticLongitude, eclipticObliquity;
+            Float rightAscension, declination;
+            Float elevation, azimuth;
 
             // Auxiliary variables
-            double dY;
-            double dX;
+            Float dY;
+            Float dX;
 
             /* Calculate difference in days between the current Julian Day
             and JD 2451545.0, which is noon 1 January 2000 Universal Time */
@@ -628,61 +638,62 @@ public:
                 decHours = dateTime.hour - location.timezone +
                     (dateTime.minute + dateTime.second / 60.0 ) / 60.0;
                 
-                // Calculate current Julian Day
-                int liAux1 = (dateTime.month-14) / 12;
-                int liAux2 = (1461*(dateTime.year + 4800 + liAux1)) / 4
-                    + (367 * (dateTime.month - 2 - 12 * liAux1)) / 12
-                    - (3 * ((dateTime.year + 4900 + liAux1) / 100)) / 4
-                    + dateTime.day - 32075;
-                double dJulianDate = (double) liAux2 - 0.5 + decHours / 24.0;
+                // // Calculate current Julian Day
+                // int liAux1 = (dateTime.month-14) / 12;
+                // int liAux2 = (1461*(dateTime.year + 4800 + liAux1)) / 4
+                //     + (367 * (dateTime.month - 2 - 12 * liAux1)) / 12
+                //     - (3 * ((dateTime.year + 4900 + liAux1) / 100)) / 4
+                //     + dateTime.day - 32075;
+                // double dJulianDate = (double) liAux2 - 0.5 + decHours / 24.0;
 
-                // Calculate difference between current Julian Day and JD 2451545.0
-                elapsedJulianDays = dJulianDate - 2451545.0;
+                // // Calculate difference between current Julian Day and JD 2451545.0
+                // elapsedJulianDays = dJulianDate - 2451545.0;
             }
 
             /* Calculate ecliptic coordinates (ecliptic longitude and obliquity of the
             ecliptic in radians but without limiting the angle to be less than 2*Pi
             (i.e., the result may be greater than 2*Pi) */
             {
-                double omega = 2.1429 - 0.0010394594 * elapsedJulianDays;
-                double meanLongitude = 4.8950630 + 0.017202791698 * elapsedJulianDays; // Radians
-                double anomaly = 6.2400600 + 0.0172019699 * elapsedJulianDays;
+                Float omega = 2.1429 - 0.0010394594 * elapsedJulianDays;
+                Float meanLongitude = 4.8950630 + 0.017202791698 * elapsedJulianDays; // Radians
+                Float anomaly = 6.2400600 + 0.0172019699 * elapsedJulianDays;
 
-                eclipticLongitude = meanLongitude + 0.03341607 * std::sin(anomaly)
-                    + 0.00034894 * std::sin(2*anomaly) - 0.0001134
-                    - 0.0000203 * std::sin(omega);
+                eclipticLongitude = meanLongitude + 0.03341607 * dr::sin(anomaly)
+                    + 0.00034894 * dr::sin(2*anomaly) - 0.0001134
+                    - 0.0000203 * dr::sin(omega);
 
                 eclipticObliquity = 0.4090928 - 6.2140e-9 * elapsedJulianDays
-                    + 0.0000396 * std::cos(omega);
+                    + 0.0000396 * dr::cos(omega);
             }
 
             // Calculate local coordinates (azimuth and zenith angle) in degrees
             {
-                double greenwichMeanSiderealTime = 6.6974243242
+                Float greenwichMeanSiderealTime = 6.6974243242
                     + 0.0657098283 * elapsedJulianDays + decHours;
 
-                double localMeanSiderealTime = degToRad((Float) ((greenwichMeanSiderealTime * 15
+                Float localMeanSiderealTime = degToRad((Float) ((greenwichMeanSiderealTime * 15
                     + location.longitude)));
 
-                double latitudeInRadians = degToRad(location.latitude);
-                double cosLatitude = std::cos(latitudeInRadians);
-                double sinLatitude = std::sin(latitudeInRadians);
+                Float latitudeInRadians = degToRad(location.latitude);
+                Float cosLatitude = dr::cos(latitudeInRadians);
+                Float sinLatitude = dr::sin(latitudeInRadians);
 
-                double hourAngle = localMeanSiderealTime - rightAscension;
-                double cosHourAngle = std::cos(hourAngle);
+                Float hourAngle = localMeanSiderealTime - rightAscension;
+                Float cosHourAngle = dr::cos(hourAngle);
 
-                elevation = std::acos(cosLatitude * cosHourAngle
-                    * std::cos(declination) + std::sin(declination) * sinLatitude);
+                elevation = dr::acos(cosLatitude * cosHourAngle
+                    * dr::cos(declination) + dr::sin(declination) * sinLatitude);
 
-                dY = -std::sin(hourAngle);
-                dX = std::tan(declination) * cosLatitude - sinLatitude * cosHourAngle;
+                dY = -dr::sin(hourAngle);
+                dX = dr::tan(declination) * cosLatitude - sinLatitude * cosHourAngle;
 
-                azimuth = std::atan2(dY, dX);
-                if (azimuth < 0.0)
+                azimuth = dr::atan2(dY, dX);
+                // Q. if all or any?
+                if (dr::all(azimuth < 0.0))
                     azimuth += 2*M_PI;
 
                 // Parallax Correction
-                elevation += (EARTH_MEAN_RADIUS / ASTRONOMICAL_UNIT) * std::sin(elevation);
+                elevation += (EARTH_MEAN_RADIUS / ASTRONOMICAL_UNIT) * dr::sin(elevation);
             }
 
             return SphericalCoordinates((Float) elevation, (Float) azimuth);
@@ -718,27 +729,27 @@ public:
 
 
         ////////////////// Main Part //////////////////
-		SunEmitter(const Properties &props): Base(props) {
-				m_scale = props.get<Float>("scale", 1.0f);
-				m_resolution = props.get<int>("resolution", 512);
-				m_sun = computeSunCoordinates(props);
-				m_sunRadiusScale = props.get<Float>("sunRadiusScale", 1.0f);
-				m_turbidity = props.get<Float>("turbidity", 3.0f);
-				m_stretch = props.get<Float>("stretch", 1.0f);
+		// SunEmitter(const Properties &props): Base(props) {
+		// 		m_scale = props.get<Float>("scale", 1.0f);
+		// 		m_resolution = props.get<int>("resolution", 512);
+		// 		m_sun = computeSunCoordinates(props);
+		// 		m_sunRadiusScale = props.get<Float>("sunRadiusScale", 1.0f);
+		// 		m_turbidity = props.get<Float>("turbidity", 3.0f);
+		// 		m_stretch = props.get<Float>("stretch", 1.0f);
 
-				m_sun = SphericalCoordinates<Float>(props);
+		// 		m_sun = SphericalCoordinates<Float>(props);
 				
-				// The followings are done in "configure" function in mituba1
+		// 		// The followings are done in "configure" function in mituba1
 
-				SphericalCoordinates<Float> sun(m_sun);
-				sun.elevation *= m_stretch;
-				m_sunDir = toSphere(sun);
+		// 		SphericalCoordinates<Float> sun(m_sun);
+		// 		sun.elevation *= m_stretch;
+		// 		m_sunDir = toSphere(sun);
 
-                /* Solid angle covered by the sun */
-                m_theta = degToRad<Float>(SUN_APP_RADIUS * 0.5f);
-                m_solidAngle = 2 * M_PI * (1 - dr::cos(m_theta));
-                m_radiance = computeSunRadiance(m_sun.elevation, m_turbidity) * m_scale;
-		}
+        //         /* Solid angle covered by the sun */
+        //         m_theta = degToRad<Float>(SUN_APP_RADIUS * 0.5f);
+        //         m_solidAngle = 2 * M_PI * (1 - dr::cos(m_theta));
+        //         m_radiance = computeSunRadiance(m_sun.elevation, m_turbidity) * m_scale;
+		// }
 
 
 
@@ -758,7 +769,7 @@ protected:
     /// Position of the sun in spherical coordinates
     SphericalCoordinates<Float> m_sun;
     /// Direction of the sun (untransformed)
-    Frame3f m_sunDir;
+    Vector3f m_sunDir;
     /// Turbidity of the atmosphere
     Float m_turbidity;
     /// Radiance arriving from the sun disk
